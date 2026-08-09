@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  # Python runtime tests
+  python:
+    build:
+      context: .
+      dockerfile: docker/python.Dockerfile
+    volumes:
+      - .:/workspace:cached
+    working_dir: /workspace
+    command: [".venv/bin/python", "python/ortho32_invariant.py"]
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  # LLM runtime tests
+  llm-runtime:
+    build:
+      context: .
+      dockerfile: docker/python.Dockerfile
+    volumes:
+      - .:/workspace:cached
+    working_dir: /workspace
+    command: [".venv/bin/python", "python/ortho32_llm_runtime.py"]
+    depends_on: [python]
+
+volumes:
+  cache:
+
+networks:
+  default:
+    name: ortho32-net

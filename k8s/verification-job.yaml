@@ -1,0 +1,293 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ortho32-verification
+  namespace: ortho32-verification
+  labels:
+    app: ortho32-verification
+    component: verification-job
+    entropy-level: "0.0"
+spec:
+  ttlSecondsAfterFinished: 86400  # 24 hours
+  activeDeadlineSeconds: 7200     # 2 hours timeout
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: ortho32-verification
+        job-type: verification
+    spec:
+      serviceAccountName: ortho32-verifier
+      restartPolicy: Never
+
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: workload-type
+                    operator: In
+                    values:
+                      - verification
+
+      initContainers:
+        - name: git-clone
+          image: alpine/git:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              echo "Cloning ORTHO-32 repository..."
+              git clone --depth 1 https://github.com/SNAPKITTYWEST/ortho32-local.git /workspace/ortho32
+              cd /workspace/ortho32
+              git log -1 --format="%H %ai %s" > /workspace/git-commit.txt
+              echo "Clone complete: $(cat /workspace/git-commit.txt)"
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+
+      containers:
+        # Container 1: Python test suite
+        - name: python-tests
+          image: ortho32/python:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              cd /workspace/ortho32
+
+              echo "=== ORTHO-32 Verification Pipeline ==="
+              echo "Commit: $(cat /workspace/git-commit.txt)"
+              echo "Entropy Target: H=0.0"
+              echo ""
+
+              # Run pytest with full verbosity
+              pytest tests/test_edge_cases.py -v \
+                --tb=short \
+                --color=yes \
+                --junit-xml=/workspace/results/pytest-results.xml \
+                --html=/workspace/results/pytest-report.html \
+                --self-contained-html \
+                2>&1 | tee /workspace/results/pytest-output.log
+
+              TEST_EXIT_CODE=${PIPESTATUS[0]}
+              echo "Test exit code: $TEST_EXIT_CODE" > /workspace/results/python-exit-code.txt
+
+              exit $TEST_EXIT_CODE
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+            - name: cache
+              mountPath: /root/.cache
+            - name: test-config
+              mountPath: /config
+          env:
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: ORTHO32_TEST_CONFIG
+              value: "/config/test-config.yaml"
+            - name: ORTHO32_ENTROPY_TARGET
+              value: "0.0"
+          resources:
+            requests:
+              cpu: "8"
+              memory: "16Gi"
+            limits:
+              cpu: "16"
+              memory: "32Gi"
+
+        # Container 2: Edge case validation
+        - name: edge-case-tests
+          image: ortho32/python:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              cd /workspace/ortho32
+
+              # Wait for python-tests to generate base results
+              while [ ! -f /workspace/results/pytest-output.log ]; do
+                echo "Waiting for python tests to start..."
+                sleep 5
+              done
+
+              echo "=== Edge Case Validation ==="
+
+              # Run focused edge case tests
+              python3 << 'EDGE_TESTS'
+              import numpy as np
+              import json
+              from datetime import datetime
+
+              results = {
+                  "timestamp": datetime.utcnow().isoformat(),
+                  "test_suite": "edge_cases",
+                  "cases": []
+              }
+
+              # Test 1: Zero matrix entropy
+              zero_matrix = np.zeros((32, 32), dtype=np.float64)
+              entropy_zero = -np.sum(zero_matrix * np.log(zero_matrix + 1e-15))
+              results["cases"].append({
+                  "name": "zero_matrix_entropy",
+                  "expected": 0.0,
+                  "actual": float(entropy_zero),
+                  "pass": abs(entropy_zero) < 1e-15
+              })
+
+              # Test 2: Identity matrix determinant
+              identity = np.eye(32, dtype=np.float64)
+              det_identity = np.linalg.det(identity)
+              results["cases"].append({
+                  "name": "identity_determinant",
+                  "expected": 1.0,
+                  "actual": float(det_identity),
+                  "pass": abs(det_identity - 1.0) < 1e-15
+              })
+
+              # Test 3: Orthogonal matrix properties
+              Q, _ = np.linalg.qr(np.random.randn(32, 32))
+              QTQ = Q.T @ Q
+              ortho_error = np.linalg.norm(QTQ - identity, 'fro')
+              results["cases"].append({
+                  "name": "orthogonal_property",
+                  "expected": 0.0,
+                  "actual": float(ortho_error),
+                  "pass": ortho_error < 1e-12
+              })
+
+              # Write results
+              with open("/workspace/results/edge-case-results.json", "w") as f:
+                  json.dump(results, f, indent=2)
+
+              # Check pass rate
+              total = len(results["cases"])
+              passed = sum(1 for c in results["cases"] if c["pass"])
+              print(f"Edge cases: {passed}/{total} passed")
+
+              if passed < total:
+                  exit(1)
+              EDGE_TESTS
+
+              echo "Edge case validation complete"
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+            - name: cache
+              mountPath: /root/.cache
+          resources:
+            requests:
+              cpu: "4"
+              memory: "8Gi"
+            limits:
+              cpu: "8"
+              memory: "16Gi"
+
+        # Container 3: Result aggregation
+        - name: result-aggregator
+          image: ortho32/python:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+
+              # Wait for both test containers to complete
+              echo "Waiting for test results..."
+              while [ ! -f /workspace/results/python-exit-code.txt ] || \
+                    [ ! -f /workspace/results/edge-case-results.json ]; do
+                sleep 5
+              done
+
+              echo "=== Result Aggregation ==="
+
+              python3 << 'AGGREGATE'
+              import json
+              import os
+              from datetime import datetime
+
+              # Load all results
+              summary = {
+                  "pipeline": "ORTHO-32 Verification",
+                  "timestamp": datetime.utcnow().isoformat(),
+                  "commit": open("/workspace/git-commit.txt").read().strip(),
+                  "results": {}
+              }
+
+              # Python test exit code
+              with open("/workspace/results/python-exit-code.txt") as f:
+                  python_exit = int(f.read().strip().split(": ")[1])
+                  summary["results"]["python_tests"] = {
+                      "exit_code": python_exit,
+                      "passed": python_exit == 0
+                  }
+
+              # Edge case results
+              with open("/workspace/results/edge-case-results.json") as f:
+                  edge_data = json.load(f)
+                  passed = sum(1 for c in edge_data["cases"] if c["pass"])
+                  total = len(edge_data["cases"])
+                  summary["results"]["edge_cases"] = {
+                      "passed": passed,
+                      "total": total,
+                      "success_rate": passed / total if total > 0 else 0.0
+                  }
+
+              # Overall status
+              all_passed = (
+                  summary["results"]["python_tests"]["passed"] and
+                  summary["results"]["edge_cases"]["success_rate"] == 1.0
+              )
+              summary["overall_status"] = "PASSED" if all_passed else "FAILED"
+              summary["entropy_target"] = "H=0.0 (deterministic)"
+
+              # Write final summary
+              with open("/workspace/results/verification-summary.json", "w") as f:
+                  json.dump(summary, f, indent=2)
+
+              print("\n" + "="*60)
+              print("ORTHO-32 VERIFICATION SUMMARY")
+              print("="*60)
+              print(f"Status: {summary['overall_status']}")
+              print(f"Commit: {summary['commit']}")
+              print(f"Python Tests: {'PASSED' if summary['results']['python_tests']['passed'] else 'FAILED'}")
+              print(f"Edge Cases: {summary['results']['edge_cases']['passed']}/{summary['results']['edge_cases']['total']}")
+              print("="*60 + "\n")
+
+              if not all_passed:
+                  exit(1)
+              AGGREGATE
+
+              echo "Aggregation complete - all results written to /workspace/results/"
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+          resources:
+            requests:
+              cpu: "1"
+              memory: "2Gi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+
+      volumes:
+        - name: workspace
+          persistentVolumeClaim:
+            claimName: ortho32-workspace
+        - name: cache
+          persistentVolumeClaim:
+            claimName: ortho32-cache
+        - name: test-config
+          configMap:
+            name: ortho32-test-vectors

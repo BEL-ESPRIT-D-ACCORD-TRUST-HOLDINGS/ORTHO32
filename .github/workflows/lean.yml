@@ -1,0 +1,85 @@
+name: Lean 4 Verification
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lean-check:
+    name: Lean 4 Proofs
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Lean
+        run: |
+          curl -sSL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain leanprover/lean4:v4.11.0
+          echo "$HOME/.elan/bin" >> $GITHUB_PATH
+
+      - name: Cache Mathlib
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.lake
+            .lake
+          key: lean-mathlib-${{ hashFiles('lakefile.lean', 'lean-toolchain') }}
+          restore-keys: |
+            lean-mathlib-
+
+      - name: Update dependencies
+        run: lake update
+
+      - name: Build Lean project
+        run: |
+          lake build Ortho32
+          lake build Ortho32Paper
+
+      - name: Run proof checker
+        run: lake exe ortho32_check
+
+      - name: Check no sorry
+        run: |
+          echo "Checking for sorry in proofs..."
+          if grep -r "sorry" Ortho32/Paper/*.lean; then
+            echo "ERROR: Found sorry in paper theorems!"
+            exit 1
+          fi
+          echo "✓ No sorry found in paper theorems"
+
+      - name: Generate theorem documentation
+        run: |
+          mkdir -p paper
+          lake exe ortho32_check > paper/verification_report.txt
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: lean-verification
+          path: |
+            paper/verification_report.txt
+            .lake/build/
+
+  integration:
+    name: Full Integration Test
+    needs: [lean-check]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download Lean artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: lean-verification
+          path: artifacts/lean
+
+      - name: Verification summary
+        run: |
+          echo "═══════════════════════════════════════════"
+          echo "ORTHO-32 Complete Verification Summary"
+          echo "═══════════════════════════════════════════"
+          cat artifacts/lean/paper/verification_report.txt
+          echo "═══════════════════════════════════════════"

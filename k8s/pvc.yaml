@@ -1,0 +1,32 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ortho32-workspace
+  namespace: ortho32-verification
+  labels:
+    app: ortho32-verification
+    component: workspace
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 50Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ortho32-cache
+  namespace: ortho32-verification
+  labels:
+    app: ortho32-verification
+    component: cache
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 20Gi

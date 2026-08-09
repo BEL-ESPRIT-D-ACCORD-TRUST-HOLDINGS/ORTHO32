@@ -1,0 +1,90 @@
+name: HOL Light Verification
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  hol-light:
+    name: HOL Light Proofs
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    container:
+      image: ocaml/opam2:ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          opam init -y --disable-sandboxing
+          eval $(opam env)
+          opam install -y menhir num zarith
+
+      - name: Install HOL Light
+        run: |
+          cd /tmp
+          git clone --depth 1 https://github.com/jrh13/hol-light.git
+          cd hol-light
+          eval $(opam env)
+          make
+
+      - name: Build ORTHO-32 theories
+        run: |
+          cd hol-light
+          eval $(opam env)
+          /tmp/hol-light/hol -eval 'loadt "ortho32_lib.ml";; print_string "Build complete\n";;'
+
+      - name: Check axioms
+        run: |
+          cd hol-light
+          eval $(opam env)
+          /tmp/hol-light/hol -eval 'loadt "ortho32_lib.ml";; print_axioms ();;' > axioms.txt
+          cat axioms.txt
+
+          # Verify only standard axioms
+          if grep -v -E "(propext|Classical\.choice|Quot\.sound|Num|Real)" axioms.txt | grep -q "axiom"; then
+            echo "ERROR: Non-standard axioms detected!"
+            exit 1
+          fi
+          echo "✓ Only standard axioms used"
+
+      - name: Run regression tests
+        run: |
+          cd hol-light
+          eval $(opam env)
+          /tmp/hol-light/hol -eval 'loadt "ortho32_lib.ml";; run_tests ();;'
+
+      - name: Upload axiom report
+        uses: actions/upload-artifact@v4
+        with:
+          name: hol-light-axioms
+          path: hol-light/axioms.txt
+
+  verification-summary:
+    name: Complete Verification Summary
+    needs: [hol-light]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Generate summary
+        run: |
+          echo "═══════════════════════════════════════════"
+          echo "ORTHO-32 Verification Status"
+          echo "═══════════════════════════════════════════"
+          echo ""
+          echo "HOL Light (Minimal Trusted Kernel):"
+          if [ -f artifacts/hol-light-axioms/axioms.txt ]; then
+            cat artifacts/hol-light-axioms/axioms.txt
+          fi
+          echo ""
+          echo "═══════════════════════════════════════════"

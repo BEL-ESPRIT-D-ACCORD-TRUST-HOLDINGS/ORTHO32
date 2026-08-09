@@ -1,0 +1,54 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ortho32-test-vectors
+  namespace: ortho32-verification
+  labels:
+    app: ortho32-verification
+    component: test-data
+data:
+  test-config.yaml: |
+    # ORTHO-32 Test Configuration
+    # Deterministic matrix accelerator with H=0.0 entropy
+
+    verification:
+      tolerance: 1e-15
+      max_iterations: 10000
+      timeout_seconds: 7200
+
+    edge_cases:
+      - name: "zero_matrix"
+        description: "All-zero 32x32 matrix"
+        expected_entropy: 0.0
+
+      - name: "identity_matrix"
+        description: "32x32 identity matrix"
+        expected_entropy: 0.0
+
+      - name: "orthogonal_rotation"
+        description: "32x32 orthogonal rotation matrix"
+        expected_entropy: 0.0
+
+      - name: "permutation_matrix"
+        description: "32x32 permutation matrix"
+        expected_entropy: 0.0
+
+      - name: "near_singular"
+        description: "Nearly singular matrix (cond > 1e14)"
+        expected_behavior: "deterministic_warning"
+
+    test_vectors:
+      dimensions: [8, 16, 32, 64, 128]
+      matrix_types:
+        - orthogonal
+        - symmetric
+        - hermitian
+        - sparse
+        - band_diagonal
+
+    reporting:
+      format: "json"
+      output_dir: "/workspace/results"
+      include_traces: true
+      log_level: "INFO"

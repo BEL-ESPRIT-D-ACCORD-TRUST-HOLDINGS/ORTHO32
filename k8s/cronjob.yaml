@@ -1,0 +1,174 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ortho32-nightly-regression
+  namespace: ortho32-verification
+  labels:
+    app: ortho32-verification
+    component: nightly-regression
+spec:
+  schedule: "0 2 * * *"  # 2:00 AM daily
+  timeZone: "UTC"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 7
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    metadata:
+      labels:
+        app: ortho32-verification
+        job-type: nightly-regression
+    spec:
+      ttlSecondsAfterFinished: 86400  # 24 hours
+      activeDeadlineSeconds: 7200     # 2 hours timeout
+      backoffLimit: 3
+      template:
+        metadata:
+          labels:
+            app: ortho32-verification
+            job-type: nightly-regression
+        spec:
+          serviceAccountName: ortho32-verifier
+          restartPolicy: Never
+
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: workload-type
+                        operator: In
+                        values:
+                          - verification
+
+          initContainers:
+            - name: git-clone
+              image: alpine/git:latest
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  echo "=== ORTHO-32 Nightly Regression ==="
+                  echo "Start time: $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
+                  echo ""
+                  echo "Cloning ORTHO-32 repository..."
+                  git clone --depth 1 https://github.com/SNAPKITTYWEST/ortho32-local.git /workspace/ortho32
+                  cd /workspace/ortho32
+                  git log -1 --format="%H %ai %s" > /workspace/git-commit.txt
+                  echo "Clone complete: $(cat /workspace/git-commit.txt)"
+              volumeMounts:
+                - name: workspace
+                  mountPath: /workspace
+              resources:
+                requests:
+                  cpu: "500m"
+                  memory: "512Mi"
+                limits:
+                  cpu: "1"
+                  memory: "1Gi"
+
+          containers:
+            - name: nightly-regression
+              image: ortho32/python:latest
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  set -e
+                  cd /workspace/ortho32
+
+                  TIMESTAMP=$(date -u +"%Y%m%d_%H%M%S")
+                  RESULTS_DIR="/workspace/results/nightly-${TIMESTAMP}"
+                  mkdir -p "${RESULTS_DIR}"
+
+                  echo "=== ORTHO-32 Nightly Regression ==="
+                  echo "Timestamp: ${TIMESTAMP}"
+                  echo "Commit: $(cat /workspace/git-commit.txt)"
+                  echo "Entropy Target: H=0.0"
+                  echo "Results: ${RESULTS_DIR}"
+                  echo ""
+
+                  # Full test suite with extended verbosity
+                  pytest tests/ -v \
+                    --tb=long \
+                    --color=yes \
+                    --durations=20 \
+                    --junit-xml="${RESULTS_DIR}/pytest-results.xml" \
+                    --html="${RESULTS_DIR}/pytest-report.html" \
+                    --self-contained-html \
+                    --cov=python \
+                    --cov-report=html:"${RESULTS_DIR}/coverage" \
+                    --cov-report=term \
+                    2>&1 | tee "${RESULTS_DIR}/pytest-output.log"
+
+                  TEST_EXIT_CODE=${PIPESTATUS[0]}
+
+                  # Generate regression summary
+                  python3 << SUMMARY_EOF
+                  import json
+                  from datetime import datetime
+
+                  summary = {
+                      "type": "nightly_regression",
+                      "timestamp": "${TIMESTAMP}",
+                      "utc_time": datetime.utcnow().isoformat(),
+                      "commit": open("/workspace/git-commit.txt").read().strip(),
+                      "test_exit_code": ${TEST_EXIT_CODE},
+                      "passed": ${TEST_EXIT_CODE} == 0,
+                      "results_dir": "${RESULTS_DIR}",
+                      "entropy_target": "H=0.0"
+                  }
+
+                  with open("${RESULTS_DIR}/nightly-summary.json", "w") as f:
+                      json.dump(summary, f, indent=2)
+
+                  print("\n" + "="*60)
+                  print("NIGHTLY REGRESSION SUMMARY")
+                  print("="*60)
+                  print(f"Status: {'PASSED' if summary['passed'] else 'FAILED'}")
+                  print(f"Timestamp: {summary['timestamp']}")
+                  print(f"Commit: {summary['commit']}")
+                  print(f"Results: {summary['results_dir']}")
+                  print("="*60 + "\n")
+                  SUMMARY_EOF
+
+                  # Create symlink to latest
+                  ln -sfn "${RESULTS_DIR}" /workspace/results/nightly-latest
+
+                  echo "Regression complete - results saved to ${RESULTS_DIR}"
+                  exit ${TEST_EXIT_CODE}
+              volumeMounts:
+                - name: workspace
+                  mountPath: /workspace
+                - name: cache
+                  mountPath: /root/.cache
+                - name: test-config
+                  mountPath: /config
+              env:
+                - name: PYTHONUNBUFFERED
+                  value: "1"
+                - name: ORTHO32_TEST_CONFIG
+                  value: "/config/test-config.yaml"
+                - name: ORTHO32_ENTROPY_TARGET
+                  value: "0.0"
+                - name: ORTHO32_REGRESSION_MODE
+                  value: "nightly"
+              resources:
+                requests:
+                  cpu: "16"
+                  memory: "32Gi"
+                limits:
+                  cpu: "32"
+                  memory: "64Gi"
+
+          volumes:
+            - name: workspace
+              persistentVolumeClaim:
+                claimName: ortho32-workspace
+            - name: cache
+              persistentVolumeClaim:
+                claimName: ortho32-cache
+            - name: test-config
+              configMap:
+                name: ortho32-test-vectors

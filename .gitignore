@@ -1,0 +1,30 @@
+# Build artifacts
+*.o
+*.obj
+*.exe
+*.out
+obj_dir/
+*.vcd
+*.fst
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Secrets
+*.key
+*.pem
+.env
+.env.local
+
+# Temp
+*.tmp
+*.bak
