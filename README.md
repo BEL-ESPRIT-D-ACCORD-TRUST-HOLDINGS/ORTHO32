@@ -21,7 +21,7 @@
 
 <div align="center">
 
-![ORTHO-32 Demo](assets/images/entropy-chaos.png)
+![ORTHO-32 Demo](assets/images/demo.gif)
 
 *Real-time H=0.0 deterministic execution with perfect reproducibility*
 
