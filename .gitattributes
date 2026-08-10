@@ -1,1 +1,5 @@
 *.ml linguist-language=OCaml
+docs/site/** linguist-documentation
+docs/site/*.html linguist-vendored
+docs/site/*.css linguist-vendored
+docs/site/*.js linguist-vendored
