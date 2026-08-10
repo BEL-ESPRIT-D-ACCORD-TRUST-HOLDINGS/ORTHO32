@@ -216,13 +216,11 @@ ortho32/
 │   ├── seal.py              Cryptographic attestation engine
 │   ├── MANIFEST.seal.jsonl  SHA-256 fingerprints + RSA signatures
 │   ├── CHAIN.worm.jsonl     Append-only integrity chain
-│   ├── signing.cert.pem     Verification certificate
-│   └── signing.key.pem      Signing key
+│   └── signing.cert.pem     Verification certificate (public)
 │
 ├── docker/
 │   ├── base.Dockerfile
-│   ├── python.Dockerfile
-│   └── docker-compose.yml
+│   └── python.Dockerfile
 │
 ├── k8s/                     Production deployment (12 manifests)
 │
@@ -230,9 +228,10 @@ ortho32/
 │   └── test_edge_cases.py   100+ pytest edge cases
 │
 ├── docs/
-│   ├── MATHEMATICAL_PROOF.md
-│   ├── INVARIANT_PROPERTIES.md
-│   └── DEPLOYMENT_ADVANCED.md
+│   ├── VERIFICATION.md          Formal proof documentation
+│   ├── MATHEMATICAL_PROOF.md    Entropy proof
+│   ├── INVARIANT_PROPERTIES.md  Transform properties
+│   └── DEPLOYMENT_ADVANCED.md   Production deployment
 │
 ├── formal/
 │   └── VERIFICATION_CHECKLIST.md  (188 items)
