@@ -3,24 +3,25 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ORTHO-32 — Deterministic Compute From First Principles</title>
+<title>ORTHO32 — Deterministic Compute Built From First Principles</title>
 <meta name="description" content="A formally specified processor architecture for predictable execution, matrix acceleration, and verification-first hardware.">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
-     HERO
+     1. HERO
      ═══════════════════════════════════════════════════════════════════════════ -->
 <section id="hero">
   <div class="pcb-bg"></div>
+  <div class="grid-overlay"></div>
   <div class="hero-content">
     <h1>ORTHO<span class="accent">32</span></h1>
     <p class="tagline">Deterministic Compute<br>Built From First Principles</p>
     <p class="subtitle">A formally specified processor architecture<br>for predictable execution, matrix acceleration,<br>and verification-first hardware.</p>
     <div class="hero-buttons">
-      <a href="#architecture" class="btn btn-primary">Explore Architecture</a>
-      <a href="#pipeline" class="btn btn-secondary">Live Pipeline Demo</a>
+      <a href="#architecture-deep-dive" class="btn btn-primary">Explore Architecture</a>
+      <a href="#live-processor" class="btn btn-secondary">Live Pipeline Demo</a>
       <a href="https://github.com/BEL-ESPRIT-D-ACCORD-TRUST-HOLDINGS/ORTHO32/blob/main/docs/MATHEMATICAL_PROOF.md" class="btn btn-secondary">Read Whitepaper</a>
       <a href="https://github.com/BEL-ESPRIT-D-ACCORD-TRUST-HOLDINGS/ORTHO32" class="btn btn-outline">GitHub</a>
     </div>
@@ -34,83 +35,121 @@
 </section>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
-     LIVE PIPELINE
+     2. LIVE PROCESSOR
      ═══════════════════════════════════════════════════════════════════════════ -->
-<section id="pipeline">
-  <h2>Live Pipeline</h2>
-  <p class="section-desc">Five-stage scalar execution. Every clock cycle, instructions advance. Forwarding resolves hazards. Branches flush.</p>
+<section id="live-processor">
+  <h2>Live Processor Simulation</h2>
+  <p class="section-desc">Full five-stage scalar pipeline with register file, instruction queue, and cycle-accurate waveform display. Watch forwarding resolve hazards in real time.</p>
 
-  <div class="pipeline-container">
-    <div class="pipeline-controls">
+  <div class="processor-lab">
+    <div class="lab-controls">
       <button id="btn-clock" class="ctrl-btn">Clock</button>
-      <button id="btn-run" class="ctrl-btn">Run</button>
+      <button id="btn-run" class="ctrl-btn" data-state="stopped">Run</button>
       <button id="btn-step" class="ctrl-btn">Step</button>
       <button id="btn-reset" class="ctrl-btn">Reset</button>
       <button id="btn-hazard" class="ctrl-btn ctrl-accent">Inject Hazard</button>
       <button id="btn-flush" class="ctrl-btn ctrl-accent">Branch Flush</button>
+      <button id="btn-toggle-fwd" class="ctrl-btn">Toggle Forwarding</button>
     </div>
 
     <div class="pipeline-stages">
       <div class="stage" id="stage-if">
         <div class="stage-header">IF</div>
         <div class="stage-body">Instruction Fetch</div>
-        <div class="stage-slot" data-stage="if"></div>
+        <div class="stage-slot" data-stage="if">—</div>
       </div>
       <div class="stage-arrow">→</div>
       <div class="stage" id="stage-id">
         <div class="stage-header">ID</div>
         <div class="stage-body">Decode</div>
-        <div class="stage-slot" data-stage="id"></div>
+        <div class="stage-slot" data-stage="id">—</div>
       </div>
       <div class="stage-arrow">→</div>
       <div class="stage" id="stage-ex">
         <div class="stage-header">EX</div>
         <div class="stage-body">Execute</div>
-        <div class="stage-slot" data-stage="ex"></div>
-        <div class="forward-path" id="fwd-ex-mem">FWD</div>
+        <div class="stage-slot" data-stage="ex">—</div>
       </div>
       <div class="stage-arrow">→</div>
       <div class="stage" id="stage-mem">
         <div class="stage-header">MEM</div>
         <div class="stage-body">Memory</div>
-        <div class="stage-slot" data-stage="mem"></div>
-        <div class="forward-path" id="fwd-mem-wb">FWD</div>
+        <div class="stage-slot" data-stage="mem">—</div>
       </div>
       <div class="stage-arrow">→</div>
       <div class="stage" id="stage-wb">
         <div class="stage-header">WB</div>
         <div class="stage-body">Write Back</div>
-        <div class="stage-slot" data-stage="wb"></div>
+        <div class="stage-slot" data-stage="wb">—</div>
       </div>
     </div>
 
-    <div class="pipeline-info">
-      <div class="info-item"><span class="info-label">Cycle</span><span id="cycle-count">0</span></div>
-      <div class="info-item"><span class="info-label">Instructions Committed</span><span id="commit-count">0</span></div>
-      <div class="info-item"><span class="info-label">Forwarding Active</span><span id="fwd-status">—</span></div>
-      <div class="info-item"><span class="info-label">Hazard</span><span id="hazard-status">None</span></div>
+    <svg class="forwarding-svg" id="fwd-svg" width="100%" height="80">
+      <line id="fwd-line-ex-mem" x1="0" y1="40" x2="100" y2="40" class="fwd-line" />
+      <line id="fwd-line-mem-wb" x1="0" y1="40" x2="100" y2="40" class="fwd-line" />
+    </svg>
+
+    <div class="lab-panels">
+      <div class="lab-panel" id="panel-registers">
+        <h3>Register File</h3>
+        <div class="registers-grid" id="registers-display"></div>
+      </div>
+
+      <div class="lab-panel" id="panel-queue">
+        <h3>Instruction Queue</h3>
+        <div class="queue-list" id="queue-display"></div>
+      </div>
+
+      <div class="lab-panel" id="panel-waveform">
+        <h3>Waveform</h3>
+        <canvas id="waveform-canvas" width="600" height="200"></canvas>
+      </div>
+    </div>
+
+    <div class="lab-stats">
+      <div class="stat-item"><span class="stat-label">Cycle</span><span id="cycle-count">0</span></div>
+      <div class="stat-item"><span class="stat-label">Committed</span><span id="commit-count">0</span></div>
+      <div class="stat-item"><span class="stat-label">CPI</span><span id="cpi-display">—</span></div>
+      <div class="stat-item"><span class="stat-label">Forwarding</span><span id="fwd-status">Enabled</span></div>
+      <div class="stat-item"><span class="stat-label">Hazard</span><span id="hazard-status">None</span></div>
     </div>
   </div>
 </section>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
-     WHY ORTHO32
+     3. WHY ORTHO32
      ═══════════════════════════════════════════════════════════════════════════ -->
 <section id="why">
-  <h2>Why ORTHO-32</h2>
+  <h2>Why ORTHO32</h2>
   <div class="cards-row">
     <div class="card">
-      <div class="card-icon">■</div>
+      <div class="card-icon">
+        <svg width="48" height="48" viewBox="0 0 48 48">
+          <rect x="12" y="12" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"/>
+          <line x1="24" y1="12" x2="24" y2="36" stroke="currentColor" stroke-width="2"/>
+          <line x1="12" y1="24" x2="36" y2="24" stroke="currentColor" stroke-width="2"/>
+        </svg>
+      </div>
       <h3>Deterministic</h3>
-      <p>Every architectural state transition is explainable. Same input, same output, same cycle count. H=0.0 nats entropy — proven.</p>
+      <p>Every architectural state transition is explainable. Same input, same output, same cycle count. H=0.0 nats entropy — proven in Lean 4.</p>
     </div>
     <div class="card">
-      <div class="card-icon">◆</div>
+      <div class="card-icon">
+        <svg width="48" height="48" viewBox="0 0 48 48">
+          <polygon points="24,8 38,24 24,40 10,24" fill="none" stroke="currentColor" stroke-width="2"/>
+          <circle cx="24" cy="24" r="4" fill="currentColor"/>
+        </svg>
+      </div>
       <h3>Verifiable</h3>
       <p>Formal methods integrated into development. 12 theorems proven in Lean 4. Zero sorry. Zero Mathlib. Kernel axioms only.</p>
     </div>
     <div class="card">
-      <div class="card-icon">▲</div>
+      <div class="card-icon">
+        <svg width="48" height="48" viewBox="0 0 48 48">
+          <path d="M 24 8 L 36 18 L 32 34 L 16 34 L 12 18 Z" fill="none" stroke="currentColor" stroke-width="2"/>
+          <line x1="24" y1="8" x2="24" y2="34" stroke="currentColor" stroke-width="2"/>
+        </svg>
+      </div>
       <h3>Portable</h3>
       <p>RTL designed for FPGA and ASIC implementation. No vendor lock-in. No proprietary IP blocks. Synthesizable from source.</p>
     </div>
@@ -118,261 +157,509 @@
 </section>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
-     ARCHITECTURE
+     4. INTERACTIVE ISA EXPLORER
      ═══════════════════════════════════════════════════════════════════════════ -->
-<section id="architecture">
-  <h2>Architecture</h2>
-  <div class="arch-grid">
-    <div class="arch-col">
-      <h3>Scalar Pipeline</h3>
-      <div class="arch-detail">
-        <p>5-stage: IF → ID → EX → MEM → WB</p>
-        <p>Zero-stall forwarding (EX/MEM, MEM/WB)</p>
-        <p>2-cycle branch penalty (proven exact)</p>
-        <p>Hardware scoreboard hazard resolution</p>
-      </div>
+<section id="isa-explorer">
+  <h2>Instruction Set Architecture</h2>
+  <p class="section-desc">Click any instruction to view its encoding, latency, pipeline behavior, and formal specification.</p>
+
+  <div class="isa-container">
+    <div class="isa-sidebar">
+      <input type="text" id="isa-search" class="isa-search" placeholder="Filter instructions...">
+      <div class="isa-list" id="isa-list"></div>
     </div>
-    <div class="arch-col">
-      <h3>Tensor Pipeline</h3>
-      <div class="arch-detail">
-        <p>4-stage: ISSUE → EXECUTE → WRITEBACK → COMMIT</p>
-        <p>TMUL: 4 cycles (never varies)</p>
-        <p>TLOAD/TSTORE: 5 cycles (never varies)</p>
-        <p>16KB deterministic scratchpad</p>
-      </div>
-    </div>
-    <div class="arch-col">
-      <h3>Timing Guarantees</h3>
-      <div class="arch-detail">
-        <p>GEMM 4×4×4: 768 cycles exact</p>
-        <p>No speculative execution</p>
-        <p>No out-of-order reordering</p>
-        <p>Side-channel immune by construction</p>
-      </div>
+
+    <div class="isa-detail" id="isa-detail">
+      <div class="isa-placeholder">Select an instruction to view its specification</div>
     </div>
   </div>
 </section>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
-     VERIFICATION
+     5. PIPELINE EXPLORER (Architecture Deep Dive)
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<section id="architecture-deep-dive">
+  <h2>Pipeline Architecture</h2>
+  <p class="section-desc">Hover over each stage to explore its internal structure and responsibilities.</p>
+
+  <div class="arch-pipeline">
+    <div class="arch-stage" data-stage="if">
+      <div class="arch-stage-label">IF</div>
+      <div class="arch-stage-name">Instruction Fetch</div>
+    </div>
+    <div class="arch-connector">→</div>
+    <div class="arch-stage" data-stage="id">
+      <div class="arch-stage-label">ID</div>
+      <div class="arch-stage-name">Instruction Decode</div>
+    </div>
+    <div class="arch-connector">→</div>
+    <div class="arch-stage" data-stage="ex">
+      <div class="arch-stage-label">EX</div>
+      <div class="arch-stage-name">Execute</div>
+    </div>
+    <div class="arch-connector">→</div>
+    <div class="arch-stage" data-stage="mem">
+      <div class="arch-stage-label">MEM</div>
+      <div class="arch-stage-name">Memory Access</div>
+    </div>
+    <div class="arch-connector">→</div>
+    <div class="arch-stage" data-stage="wb">
+      <div class="arch-stage-label">WB</div>
+      <div class="arch-stage-name">Write Back</div>
+    </div>
+  </div>
+
+  <div class="arch-detail-panel" id="arch-detail-panel">
+    <div class="arch-detail-content">Select a pipeline stage to view details</div>
+  </div>
+
+  <svg class="arch-forwarding-diagram" width="100%" height="120">
+    <defs>
+      <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+        <polygon points="0 0, 10 3, 0 6" fill="var(--cyan-accent)" />
+      </marker>
+    </defs>
+    <path d="M 400 20 Q 350 60 300 80" stroke="var(--cyan-accent)" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.3"/>
+    <text x="340" y="40" fill="var(--gray-400)" font-size="11" font-family="var(--mono)">EX → MEM forwarding</text>
+    <path d="M 600 20 Q 550 60 500 80" stroke="var(--cyan-accent)" stroke-width="2" fill="none" marker-end="url(#arrowhead)" opacity="0.3"/>
+    <text x="540" y="40" fill="var(--gray-400)" font-size="11" font-family="var(--mono)">MEM → WB forwarding</text>
+  </svg>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     6. VERIFICATION
      ═══════════════════════════════════════════════════════════════════════════ -->
 <section id="verification">
-  <h2>Verification</h2>
-  <p class="section-desc">This is where ORTHO-32 becomes different. Verification is part of the architecture, not an afterthought.</p>
+  <h2>Formal Verification</h2>
+  <p class="section-desc">Every claim about ORTHO32 behavior is backed by machine-checked proof. Verification is architecture, not afterthought.</p>
 
   <div class="verify-flow">
-    <div class="verify-step active">
-      <div class="verify-label">RTL</div>
-      <div class="verify-desc">SystemVerilog implementation</div>
+    <div class="verify-step verify-complete">
+      <div class="verify-label">RTL Implementation</div>
+      <div class="verify-desc">SystemVerilog source code</div>
+      <div class="verify-link"><a href="https://github.com/BEL-ESPRIT-D-ACCORD-TRUST-HOLDINGS/ORTHO32/tree/main/rtl">View RTL →</a></div>
     </div>
     <div class="verify-arrow">↓</div>
-    <div class="verify-step active">
-      <div class="verify-label">Simulation</div>
-      <div class="verify-desc">Verilator cycle-accurate</div>
+    <div class="verify-step verify-complete">
+      <div class="verify-label">Cycle-Accurate Simulation</div>
+      <div class="verify-desc">Verilator testbench validation</div>
+      <div class="verify-link"><a href="https://github.com/BEL-ESPRIT-D-ACCORD-TRUST-HOLDINGS/ORTHO32/tree/main/sim">View Tests →</a></div>
     </div>
     <div class="verify-arrow">↓</div>
-    <div class="verify-step active">
-      <div class="verify-label">TLA+</div>
-      <div class="verify-desc">State machine properties</div>
+    <div class="verify-step verify-complete">
+      <div class="verify-label">State Machine Properties</div>
+      <div class="verify-desc">TLA+ temporal logic specs</div>
+      <div class="verify-link"><a href="https://github.com/BEL-ESPRIT-D-ACCORD-TRUST-HOLDINGS/ORTHO32/tree/main/formal">View TLA+ →</a></div>
     </div>
     <div class="verify-arrow">↓</div>
-    <div class="verify-step active">
-      <div class="verify-label">Lean 4</div>
-      <div class="verify-desc">Machine-checked proofs</div>
+    <div class="verify-step verify-complete">
+      <div class="verify-label">Machine-Checked Proofs</div>
+      <div class="verify-desc">Lean 4 theorem proving</div>
+      <div class="verify-link"><a href="https://github.com/BEL-ESPRIT-D-ACCORD-TRUST-HOLDINGS/ORTHO32/tree/main/Ortho32">View Proofs →</a></div>
     </div>
     <div class="verify-arrow">↓</div>
-    <div class="verify-step verified">
-      <div class="verify-label">Verified</div>
-      <div class="verify-desc">12 theorems · 0 sorry · 0 Mathlib</div>
+    <div class="verify-step verify-proven">
+      <div class="verify-label">VERIFIED</div>
+      <div class="verify-desc">12 theorems · 0 sorry · 0 external dependencies</div>
+    </div>
+  </div>
+
+  <div class="verify-theorems">
+    <h3>Proven Theorems</h3>
+    <div class="theorem-grid">
+      <div class="theorem-card">pipeline_determinism</div>
+      <div class="theorem-card">forwarding_correctness</div>
+      <div class="theorem-card">hazard_detection</div>
+      <div class="theorem-card">timing_bound_exact</div>
+      <div class="theorem-card">branch_penalty_two_cycles</div>
+      <div class="theorem-card">state_transition_valid</div>
+      <div class="theorem-card">register_write_coherence</div>
+      <div class="theorem-card">memory_ordering</div>
+      <div class="theorem-card">isa_refinement</div>
+      <div class="theorem-card">rtl_refinement</div>
+      <div class="theorem-card">entropy_zero</div>
+      <div class="theorem-card">side_channel_immunity</div>
     </div>
   </div>
 
   <div class="verify-stats">
-    <div class="stat">
-      <span class="stat-num">12</span>
-      <span class="stat-label">Theorems Proven</span>
-    </div>
-    <div class="stat">
-      <span class="stat-num">0</span>
-      <span class="stat-label">Sorry (Proof Gaps)</span>
-    </div>
-    <div class="stat">
-      <span class="stat-num">0</span>
-      <span class="stat-label">External Dependencies</span>
-    </div>
-    <div class="stat">
-      <span class="stat-num">5</span>
-      <span class="stat-label">Kernel Axioms Only</span>
-    </div>
+    <div class="stat"><span class="stat-num">12</span><span class="stat-label">Theorems</span></div>
+    <div class="stat"><span class="stat-num">0</span><span class="stat-label">Sorry (proof gaps)</span></div>
+    <div class="stat"><span class="stat-num">0</span><span class="stat-label">Mathlib deps</span></div>
+    <div class="stat"><span class="stat-num">~2000</span><span class="stat-label">Lines of proof</span></div>
   </div>
 </section>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
-     TENSOR EXTENSION
+     7. TENSOR EXTENSION
      ═══════════════════════════════════════════════════════════════════════════ -->
 <section id="tensor">
   <h2>Matrix Engine</h2>
   <div class="tensor-block">
-    <div class="tensor-redacted">
-      <div class="redact-bar"></div>
-      <div class="redact-bar"></div>
-      <div class="redact-bar"></div>
-      <div class="redact-bar"></div>
+    <div class="tensor-banner">
+      <div class="tensor-badge">PROPRIETARY — PRE-DISCLOSURE</div>
+      <div class="tensor-redacted">
+        <div class="redact-bar"></div>
+        <div class="redact-bar"></div>
+        <div class="redact-bar"></div>
+        <div class="redact-bar"></div>
+        <div class="redact-bar"></div>
+      </div>
     </div>
+
     <div class="tensor-notice">
-      <p>Implementation details intentionally withheld while intellectual property protection is in progress.</p>
+      <p>Details intentionally withheld while intellectual property protection is in progress.</p>
     </div>
-    <div class="tensor-disclosed">
-      <h3>Design Goals</h3>
-      <ul>
-        <li>Deterministic matrix multiplication (H=0.0)</li>
-        <li>Fixed-latency tensor operations</li>
-        <li>Zero-entropy scheduling</li>
-        <li>Side-channel immunity</li>
-      </ul>
-      <h3>Public Interface</h3>
-      <ul>
-        <li>Core invariant: <code>f(x) = roll(x, 1) ⊗ triu(ones(T, T))</code></li>
-        <li>4×4×4 GEMM tile: 768 cycles (proven)</li>
-        <li>TR_FREE / TR_BUSY / TR_READY state machine</li>
-        <li>16KB deterministic scratchpad</li>
-      </ul>
+
+    <div class="tensor-split">
+      <div class="tensor-col">
+        <h3>Public Information</h3>
+        <div class="tensor-item">
+          <div class="tensor-label">Goals</div>
+          <div class="tensor-text">Deterministic matrix multiplication, fixed-latency tensor operations, zero-entropy scheduling</div>
+        </div>
+        <div class="tensor-item">
+          <div class="tensor-label">Interface</div>
+          <div class="tensor-text">TMUL, TLOAD, TSTORE instructions with 4-stage tensor pipeline</div>
+        </div>
+        <div class="tensor-item">
+          <div class="tensor-label">Integration Boundary</div>
+          <div class="tensor-text">Separate tensor register file, 16KB deterministic scratchpad, state machine: TR_FREE → TR_BUSY → TR_READY</div>
+        </div>
+        <div class="tensor-item">
+          <div class="tensor-label">Design Philosophy</div>
+          <div class="tensor-text">Side-channel immunity by construction, provable timing guarantees</div>
+        </div>
+      </div>
+
+      <div class="tensor-col">
+        <h3>Restricted</h3>
+        <div class="tensor-item tensor-restricted">
+          <div class="tensor-label">Implementation Details</div>
+          <div class="tensor-text">[REDACTED]</div>
+        </div>
+        <div class="tensor-item tensor-restricted">
+          <div class="tensor-label">Protected Algorithms</div>
+          <div class="tensor-text">[REDACTED]</div>
+        </div>
+        <div class="tensor-item tensor-restricted">
+          <div class="tensor-label">Undisclosed RTL</div>
+          <div class="tensor-text">[REDACTED]</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tensor-footer">
+      <p>Public disclosure: Core invariant f(x) = roll(x, 1) ⊗ triu(ones(T, T)) · 4×4×4 GEMM: 768 cycles exact</p>
     </div>
   </div>
 </section>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
-     SILICON TARGETS
+     8. SILICON
      ═══════════════════════════════════════════════════════════════════════════ -->
 <section id="silicon">
-  <h2>Silicon</h2>
-  <div class="silicon-grid">
-    <div class="silicon-card">
-      <h3>FPGA</h3>
-      <p>Xilinx Artix-7 / Kintex-7 synthesis target. Development and validation platform.</p>
-      <span class="silicon-status status-planned">Planned</span>
+  <h2>Hardware Targets</h2>
+  <p class="section-desc">From FPGA prototyping to ASIC tape-out. No fake specs, no invented clock speeds — only real milestones.</p>
+
+  <div class="silicon-selector">
+    <button class="silicon-tab active" data-target="fpga">FPGA</button>
+    <button class="silicon-tab" data-target="asic">ASIC</button>
+    <button class="silicon-tab" data-target="pcie">PCIe Card</button>
+    <button class="silicon-tab" data-target="m2">M.2 Module</button>
+    <button class="silicon-tab" data-target="devkit">Development Kit</button>
+  </div>
+
+  <div class="silicon-content">
+    <div class="silicon-panel active" id="panel-fpga">
+      <div class="silicon-visual">
+        <div class="chip-outline fpga-outline"></div>
+      </div>
+      <div class="silicon-info">
+        <h3>FPGA Prototype</h3>
+        <p>Xilinx Artix-7 and Kintex-7 synthesis targets. Primary development and validation platform.</p>
+        <div class="silicon-status status-planned">STATUS: PLANNED</div>
+        <div class="silicon-details">
+          <p>Target families: Artix-7 (XC7A100T+), Kintex-7 (XC7K160T+)</p>
+          <p>Toolchain: Vivado synthesis + place-and-route</p>
+          <p>Validation: Cycle-accurate RTL simulation match</p>
+        </div>
+      </div>
     </div>
-    <div class="silicon-card">
-      <h3>ASIC</h3>
-      <p>28nm / 14nm tape-out exploration. Post-FPGA validation.</p>
-      <span class="silicon-status status-research">Research</span>
+
+    <div class="silicon-panel" id="panel-asic">
+      <div class="silicon-visual">
+        <div class="chip-outline asic-outline"></div>
+      </div>
+      <div class="silicon-info">
+        <h3>ASIC Exploration</h3>
+        <p>28nm and 14nm process node exploration. Post-FPGA validation milestone.</p>
+        <div class="silicon-status status-research">STATUS: RESEARCH</div>
+        <div class="silicon-details">
+          <p>Target nodes: 28nm (initial), 14nm (future)</p>
+          <p>Design flow: logic synthesis → floorplanning → timing closure</p>
+          <p>Tape-out: pending FPGA validation + funding</p>
+        </div>
+      </div>
     </div>
-    <div class="silicon-card">
-      <h3>PCIe</h3>
-      <p>Accelerator card form factor. Host-attached deterministic compute.</p>
-      <span class="silicon-status status-planned">Planned</span>
+
+    <div class="silicon-panel" id="panel-pcie">
+      <div class="silicon-visual">
+        <div class="chip-outline pcie-outline"></div>
+      </div>
+      <div class="silicon-info">
+        <h3>PCIe Accelerator</h3>
+        <p>Host-attached deterministic compute card. Standard PCIe form factor.</p>
+        <div class="silicon-status status-planned">STATUS: PLANNED</div>
+        <div class="silicon-details">
+          <p>Interface: PCIe Gen3 x8 minimum</p>
+          <p>Host communication: DMA + MMIO control registers</p>
+          <p>Use case: Deterministic AI inference, cryptographic workloads</p>
+        </div>
+      </div>
     </div>
-    <div class="silicon-card">
-      <h3>Development Kit</h3>
-      <p>FPGA board + toolchain + documentation. For researchers and engineers.</p>
-      <span class="silicon-status status-planned">Planned</span>
+
+    <div class="silicon-panel" id="panel-m2">
+      <div class="silicon-visual">
+        <div class="chip-outline m2-outline"></div>
+      </div>
+      <div class="silicon-info">
+        <h3>M.2 Module</h3>
+        <p>Compact FPGA module for embedded deterministic compute.</p>
+        <div class="silicon-status status-planned">STATUS: PLANNED</div>
+        <div class="silicon-details">
+          <p>Form factor: M.2 2280 or 22110</p>
+          <p>Power budget: 10-25W TDP</p>
+          <p>Use case: Edge AI, real-time control systems</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="silicon-panel" id="panel-devkit">
+      <div class="silicon-visual">
+        <div class="chip-outline devkit-outline"></div>
+      </div>
+      <div class="silicon-info">
+        <h3>Development Kit</h3>
+        <p>Complete FPGA board, toolchain, and documentation for researchers and engineers.</p>
+        <div class="silicon-status status-planned">STATUS: PLANNED</div>
+        <div class="silicon-details">
+          <p>Includes: FPGA board, USB-JTAG programmer, power supply</p>
+          <p>Software: Full RTL source, synthesis scripts, example programs</p>
+          <p>Documentation: ISA manual, pipeline guide, verification workflow</p>
+        </div>
+      </div>
     </div>
   </div>
 </section>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
-     PERFORMANCE PHILOSOPHY
-     ═══════════════════════════════════════════════════════════════════════════ -->
-<section id="philosophy">
-  <h2>Performance Philosophy</h2>
-  <div class="philosophy-grid">
-    <div class="phil-item">
-      <span class="phil-metric">Predictability</span>
-      <span class="phil-desc">Every operation completes in known, fixed time</span>
-    </div>
-    <div class="phil-item">
-      <span class="phil-metric">Determinism</span>
-      <span class="phil-desc">Same input always produces same output at same cycle</span>
-    </div>
-    <div class="phil-item">
-      <span class="phil-metric">Verifiability</span>
-      <span class="phil-desc">Every state transition formally proven correct</span>
-    </div>
-    <div class="phil-item">
-      <span class="phil-metric">Explainability</span>
-      <span class="phil-desc">No hidden scheduling, no opaque microcode, no surprises</span>
-    </div>
-  </div>
-</section>
-
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     DOCUMENTATION
+     9. DOCUMENTATION
      ═══════════════════════════════════════════════════════════════════════════ -->
 <section id="docs">
   <h2>Documentation</h2>
   <div class="docs-grid">
+    <a href="https://github.com/BEL-ESPRIT-D-ACCORD-TRUST-HOLDINGS/ORTHO32/tree/main/docs" class="doc-card">
+      <h3>Architecture</h3>
+      <p>Pipeline design, timing guarantees, microarchitecture</p>
+    </a>
+    <a href="https://github.com/BEL-ESPRIT-D-ACCORD-TRUST-HOLDINGS/ORTHO32/blob/main/docs/ISA.md" class="doc-card">
+      <h3>ISA Manual</h3>
+      <p>Instruction encodings, register conventions, ABI</p>
+    </a>
+    <a href="https://github.com/BEL-ESPRIT-D-ACCORD-TRUST-HOLDINGS/ORTHO32/tree/main/rtl" class="doc-card">
+      <h3>RTL Source</h3>
+      <p>SystemVerilog implementation, module hierarchy</p>
+    </a>
     <a href="https://github.com/BEL-ESPRIT-D-ACCORD-TRUST-HOLDINGS/ORTHO32/blob/main/docs/VERIFICATION.md" class="doc-card">
       <h3>Verification</h3>
-      <p>12 theorems, proof tactics, axiom audit</p>
-    </a>
-    <a href="https://github.com/BEL-ESPRIT-D-ACCORD-TRUST-HOLDINGS/ORTHO32/blob/main/docs/MATHEMATICAL_PROOF.md" class="doc-card">
-      <h3>Entropy Proof</h3>
-      <p>H=0.0 mathematical derivation</p>
-    </a>
-    <a href="https://github.com/BEL-ESPRIT-D-ACCORD-TRUST-HOLDINGS/ORTHO32/blob/main/docs/INVARIANT_PROPERTIES.md" class="doc-card">
-      <h3>Invariant Properties</h3>
-      <p>Transform characteristics and guarantees</p>
+      <p>Proof tactics, theorem statements, axiom audit</p>
     </a>
     <a href="https://github.com/BEL-ESPRIT-D-ACCORD-TRUST-HOLDINGS/ORTHO32/tree/main/Ortho32" class="doc-card">
       <h3>Lean 4 Proofs</h3>
-      <p>ISA, RTL, Refinement, Timing</p>
+      <p>Pipeline, ISA, RTL, timing proofs</p>
     </a>
-    <a href="https://github.com/BEL-ESPRIT-D-ACCORD-TRUST-HOLDINGS/ORTHO32/blob/main/docs/DEPLOYMENT_ADVANCED.md" class="doc-card">
-      <h3>Deployment</h3>
-      <p>Docker, Kubernetes, production</p>
+    <a href="https://github.com/BEL-ESPRIT-D-ACCORD-TRUST-HOLDINGS/ORTHO32/tree/main/sim" class="doc-card">
+      <h3>Simulation</h3>
+      <p>Verilator testbenches, waveform traces</p>
     </a>
-    <a href="https://github.com/BEL-ESPRIT-D-ACCORD-TRUST-HOLDINGS/ORTHO32/blob/main/formal/VERIFICATION_CHECKLIST.md" class="doc-card">
-      <h3>Checklist</h3>
-      <p>188-item verification matrix</p>
+    <a href="https://github.com/BEL-ESPRIT-D-ACCORD-TRUST-HOLDINGS/ORTHO32/blob/main/docs/TENSOR.md" class="doc-card">
+      <h3>Tensor Extension</h3>
+      <p>Public interface, disclosed properties</p>
+    </a>
+    <a href="https://github.com/BEL-ESPRIT-D-ACCORD-TRUST-HOLDINGS/ORTHO32/blob/main/docs/MATHEMATICAL_PROOF.md" class="doc-card">
+      <h3>Whitepaper</h3>
+      <p>Entropy proof, mathematical foundations</p>
+    </a>
+    <a href="https://github.com/BEL-ESPRIT-D-ACCORD-TRUST-HOLDINGS/ORTHO32/blob/main/docs/API.md" class="doc-card">
+      <h3>Programmer API</h3>
+      <p>Assembly language, calling conventions</p>
+    </a>
+    <a href="https://github.com/BEL-ESPRIT-D-ACCORD-TRUST-HOLDINGS/ORTHO32/tree/main/examples" class="doc-card">
+      <h3>Examples</h3>
+      <p>Sample programs, benchmarks, tests</p>
     </a>
   </div>
 </section>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
-     TIMELINE
+     10. LIVE DEMO (full laboratory view — handled by live-processor above)
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     11. PERFORMANCE PHILOSOPHY
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<section id="philosophy">
+  <h2>Performance Philosophy</h2>
+  <p class="section-desc">We don't publish TOPS, TFLOPS, or benchmark rankings. Here's what we prove instead.</p>
+
+  <div class="philosophy-grid">
+    <div class="phil-item">
+      <div class="phil-header">
+        <div class="phil-metric">Predictability</div>
+        <div class="phil-icon">□</div>
+      </div>
+      <div class="phil-desc">Every operation completes in known, fixed time. ADD: 1 cycle. LOAD: 5 cycles. TMUL: 4 cycles. No variance. Ever.</div>
+      <div class="phil-proof">Proven: timing_bound_exact theorem</div>
+    </div>
+
+    <div class="phil-item">
+      <div class="phil-header">
+        <div class="phil-metric">Determinism</div>
+        <div class="phil-icon">◇</div>
+      </div>
+      <div class="phil-desc">Same input always produces same output at same cycle. No speculative execution, no out-of-order, no hidden state.</div>
+      <div class="phil-proof">Proven: pipeline_determinism + entropy_zero theorems</div>
+    </div>
+
+    <div class="phil-item">
+      <div class="phil-header">
+        <div class="phil-metric">Verifiability</div>
+        <div class="phil-icon">▽</div>
+      </div>
+      <div class="phil-desc">Every state transition formally proven correct. 12 theorems in Lean 4. Zero proof gaps. Zero external dependencies.</div>
+      <div class="phil-proof">Verified: complete proof chain from ISA to RTL</div>
+    </div>
+
+    <div class="phil-item">
+      <div class="phil-header">
+        <div class="phil-metric">Explainability</div>
+        <div class="phil-icon">△</div>
+      </div>
+      <div class="phil-desc">No hidden scheduling. No opaque microcode. No surprises. You see the pipeline, you see the state, you understand the machine.</div>
+      <div class="phil-proof">Architectural transparency: all state machine transitions documented</div>
+    </div>
+  </div>
+
+  <div class="philosophy-statement">
+    <p>We don't publish TOPS because peak throughput isn't the goal. Predictable latency is. We don't race benchmarks because determinism isn't measured in FLOPS. When your AI inference must complete in exactly 768 cycles — not "approximately" 768, not "usually" 768, but mathematically guaranteed 768 — that's when ORTHO32 matters.</p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     12. DEVELOPMENT TIMELINE
      ═══════════════════════════════════════════════════════════════════════════ -->
 <section id="timeline">
-  <h2>Timeline</h2>
+  <h2>Development Timeline</h2>
   <div class="timeline-flow">
-    <div class="tl-item tl-complete"><span class="tl-marker">●</span><span class="tl-text">Architecture Specification</span></div>
-    <div class="tl-item tl-complete"><span class="tl-marker">●</span><span class="tl-text">RTL Implementation</span></div>
-    <div class="tl-item tl-complete"><span class="tl-marker">●</span><span class="tl-text">Simulation Infrastructure</span></div>
-    <div class="tl-item tl-complete"><span class="tl-marker">●</span><span class="tl-text">Formal Verification (12/12 theorems)</span></div>
-    <div class="tl-item tl-active"><span class="tl-marker">◐</span><span class="tl-text">FPGA Synthesis</span></div>
-    <div class="tl-item tl-planned"><span class="tl-marker">○</span><span class="tl-text">ASIC Exploration</span></div>
-    <div class="tl-item tl-planned"><span class="tl-marker">○</span><span class="tl-text">Developer Kit</span></div>
+    <div class="timeline-item tl-complete">
+      <div class="tl-marker">●</div>
+      <div class="tl-content">
+        <div class="tl-label">Architecture Specification</div>
+        <div class="tl-desc">ISA definition, pipeline design, formal semantics</div>
+      </div>
+    </div>
+    <div class="timeline-item tl-complete">
+      <div class="tl-marker">●</div>
+      <div class="tl-content">
+        <div class="tl-label">RTL Implementation</div>
+        <div class="tl-desc">SystemVerilog modules, 5-stage pipeline, tensor extension</div>
+      </div>
+    </div>
+    <div class="timeline-item tl-complete">
+      <div class="tl-marker">●</div>
+      <div class="tl-content">
+        <div class="tl-label">Simulation Infrastructure</div>
+        <div class="tl-desc">Verilator testbenches, cycle-accurate validation</div>
+      </div>
+    </div>
+    <div class="timeline-item tl-complete">
+      <div class="tl-marker">●</div>
+      <div class="tl-content">
+        <div class="tl-label">Formal Verification</div>
+        <div class="tl-desc">12 theorems proven in Lean 4, TLA+ state machine specs</div>
+      </div>
+    </div>
+    <div class="timeline-item tl-active">
+      <div class="tl-marker">◐</div>
+      <div class="tl-content">
+        <div class="tl-label">FPGA Synthesis</div>
+        <div class="tl-desc">Xilinx Artix-7 / Kintex-7 targeting, place-and-route</div>
+      </div>
+    </div>
+    <div class="timeline-item tl-planned">
+      <div class="tl-marker">○</div>
+      <div class="tl-content">
+        <div class="tl-label">ASIC Exploration</div>
+        <div class="tl-desc">28nm process node study, tape-out planning</div>
+      </div>
+    </div>
+    <div class="timeline-item tl-planned">
+      <div class="tl-marker">○</div>
+      <div class="tl-content">
+        <div class="tl-label">Development Kit</div>
+        <div class="tl-desc">Hardware board, toolchain, documentation package</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="timeline-legend">
+    <div class="legend-item"><span class="legend-marker legend-complete">●</span> Complete</div>
+    <div class="legend-item"><span class="legend-marker legend-active">◐</span> In Progress</div>
+    <div class="legend-item"><span class="legend-marker legend-planned">○</span> Planned</div>
   </div>
 </section>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
-     FOOTER
+     13. FOOTER
      ═══════════════════════════════════════════════════════════════════════════ -->
 <footer>
+  <div class="footer-brand">
+    <div class="footer-logo">ORTHO<span class="accent">32</span></div>
+    <p class="footer-tagline">Deterministic compute from first principles</p>
+  </div>
+
   <div class="footer-grid">
     <div class="footer-col">
-      <h4>Project</h4>
-      <a href="https://github.com/BEL-ESPRIT-D-ACCORD-TRUST-HOLDINGS/ORTHO32">GitHub</a>
-      <a href="#architecture">Architecture</a>
-      <a href="https://github.com/BEL-ESPRIT-D-ACCORD-TRUST-HOLDINGS/ORTHO32/blob/main/docs/MATHEMATICAL_PROOF.md">Whitepaper</a>
+      <h4>Architecture</h4>
+      <a href="#live-processor">Pipeline Simulator</a>
+      <a href="#isa-explorer">ISA Explorer</a>
+      <a href="#architecture-deep-dive">Pipeline Deep Dive</a>
+      <a href="#verification">Formal Verification</a>
     </div>
     <div class="footer-col">
-      <h4>Documentation</h4>
-      <a href="https://github.com/BEL-ESPRIT-D-ACCORD-TRUST-HOLDINGS/ORTHO32/blob/main/docs/VERIFICATION.md">Verification</a>
+      <h4>Development</h4>
+      <a href="https://github.com/BEL-ESPRIT-D-ACCORD-TRUST-HOLDINGS/ORTHO32">GitHub Repository</a>
       <a href="https://github.com/BEL-ESPRIT-D-ACCORD-TRUST-HOLDINGS/ORTHO32/tree/main/Ortho32">Lean 4 Proofs</a>
-      <a href="https://github.com/BEL-ESPRIT-D-ACCORD-TRUST-HOLDINGS/ORTHO32/blob/main/formal/VERIFICATION_CHECKLIST.md">Checklist</a>
+      <a href="https://github.com/BEL-ESPRIT-D-ACCORD-TRUST-HOLDINGS/ORTHO32/tree/main/rtl">RTL Source</a>
+      <a href="https://github.com/BEL-ESPRIT-D-ACCORD-TRUST-HOLDINGS/ORTHO32/tree/main/sim">Simulation</a>
     </div>
     <div class="footer-col">
-      <h4>Legal</h4>
-      <a href="https://github.com/BEL-ESPRIT-D-ACCORD-TRUST-HOLDINGS/ORTHO32/blob/main/LICENSE">License (Tri-License)</a>
-      <a href="https://github.com/SNAPKITTYWEST/license-policy-engine">License Engine</a>
+      <h4>Resources</h4>
+      <a href="https://github.com/BEL-ESPRIT-D-ACCORD-TRUST-HOLDINGS/ORTHO32/blob/main/docs/MATHEMATICAL_PROOF.md">Whitepaper</a>
+      <a href="https://github.com/BEL-ESPRIT-D-ACCORD-TRUST-HOLDINGS/ORTHO32/blob/main/docs/VERIFICATION.md">Verification Guide</a>
+      <a href="https://github.com/BEL-ESPRIT-D-ACCORD-TRUST-HOLDINGS/ORTHO32/blob/main/formal/VERIFICATION_CHECKLIST.md">Verification Checklist</a>
+      <a href="https://github.com/BEL-ESPRIT-D-ACCORD-TRUST-HOLDINGS/ORTHO32/tree/main/examples">Examples</a>
+    </div>
+    <div class="footer-col">
+      <h4>Project</h4>
+      <a href="https://github.com/BEL-ESPRIT-D-ACCORD-TRUST-HOLDINGS/ORTHO32/blob/main/LICENSE">License</a>
       <a href="https://github.com/BEL-ESPRIT-D-ACCORD-TRUST-HOLDINGS/ORTHO32/blob/main/SECURITY.md">Security</a>
-    </div>
-    <div class="footer-col">
-      <h4>Contact</h4>
-      <a href="mailto:jessicalw34@gmail.com">jessicalw34@gmail.com</a>
+      <a href="mailto:jessicalw34@gmail.com">Contact</a>
       <a href="https://github.com/SNAPKITTYWEST">SnapKitty</a>
     </div>
   </div>
+
   <div class="footer-bottom">
     <p>© 2026 Bel Esprit D'Accord Irrevocable Trust · SnapKitty Collective Limited (FLP)</p>
     <p class="footer-license">BSL-1.1 AND AGPL-3.0-or-later AND MPL-2.0</p>
