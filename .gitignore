@@ -21,9 +21,12 @@ venv/
 
 # Secrets
 *.key
-*.pem
 .env
 .env.local
+
+# Seal: private key excluded, public cert included
+seal/signing.key.pem
+!seal/signing.cert.pem
 
 # Temp
 *.tmp
