@@ -1,0 +1,42 @@
+# ORTHOHost pod. Host IPC is a local named pipe (a Unix socket on Linux), so every process that talks
+# to it must share the pod and a /tmp volume. Add the gateway/API as sidecars here once they have a
+# working Linux IPC path (see ../README.md, "Integration gaps").
+# Replace REGISTRY and TAG; do not deploy `latest`.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ortho32-core
+  namespace: ortho32
+  labels: {app: ortho32-core}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: ortho32-core}
+  template:
+    metadata:
+      labels: {app: ortho32-core}
+    spec:
+      nodeSelector:
+        kubernetes.io/arch: arm64
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: host
+          image: REGISTRY/ortho32-host:TAG
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: ipc, mountPath: /tmp}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: "1", memory: 512Mi}
+      volumes:
+        - name: ipc
+          emptyDir: {}

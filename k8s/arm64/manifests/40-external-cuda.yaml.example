@@ -1,0 +1,25 @@
+# TEMPLATE (not applied by default). The custom CUDA code stays on the RTX 3080 machine, outside the
+# cluster, so its nouveau/driver setup is untouched. This gives pods a stable in-cluster name for it.
+# Fill in the machine's IP and the port its service listens on, then `kubectl apply -f` this file
+# after removing the .example suffix.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cuda-3080
+  namespace: ortho32
+spec:
+  ports:
+    - {name: rpc, port: 9000, targetPort: 9000}   # CHANGE: port the 3080 host listens on
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: cuda-3080-1
+  namespace: ortho32
+  labels: {kubernetes.io/service-name: cuda-3080}
+addressType: IPv4
+ports:
+  - {name: rpc, port: 9000, protocol: TCP}        # CHANGE: same port
+endpoints:
+  - addresses: ["192.0.2.10"]                     # CHANGE: LAN IP of the RTX 3080 machine
