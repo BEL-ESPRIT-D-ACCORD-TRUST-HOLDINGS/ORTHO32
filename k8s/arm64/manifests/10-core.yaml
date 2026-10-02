@@ -1,7 +1,11 @@
-# ORTHOHost pod. Host IPC is a local named pipe (a Unix socket on Linux), so every process that talks
-# to it must share the pod and a /tmp volume. Add the gateway/API as sidecars here once they have a
-# working Linux IPC path (see ../README.md, "Integration gaps").
-# Replace REGISTRY and TAG; do not deploy `latest`.
+# One pod: host + gateway + api. Their IPC is local (Unix sockets under /tmp), so they must share the pod.
+#   host    listens on /tmp/CoreFxPipe_ortho-host (.NET named pipe "ortho-host")
+#   gateway listens on /tmp/CoreFxPipe_ortho-ai   (.NET named pipe "ortho-ai")
+#   api     serves HTTP on 7032 and talks to the host socket
+# Replace REGISTRY and TAG; do not deploy `latest`. Required Secrets (not created here):
+#   kubectl -n ortho32 create secret generic ortho32-api --from-literal=secret-key="$(openssl rand -hex 32)"
+#   kubectl -n ortho32 create secret generic ortho32-provider-keys \
+#       --from-literal=openai=... --from-literal=anthropic=...      # either key may be omitted
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -28,15 +32,75 @@ spec:
       containers:
         - name: host
           image: REGISTRY/ortho32-host:TAG
-          securityContext:
+          securityContext: &locked
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities: {drop: [ALL]}
           volumeMounts:
             - {name: ipc, mountPath: /tmp}
+          readinessProbe:
+            exec: {command: [test, -S, /tmp/CoreFxPipe_ortho-host]}
           resources:
             requests: {cpu: 100m, memory: 128Mi}
             limits: {cpu: "1", memory: 512Mi}
+        - name: gateway
+          image: REGISTRY/ortho32-ai-gateway:TAG
+          securityContext: *locked
+          env:
+            - name: OPENAI_API_KEY
+              valueFrom: {secretKeyRef: {name: ortho32-provider-keys, key: openai, optional: true}}
+            - name: ANTHROPIC_API_KEY
+              valueFrom: {secretKeyRef: {name: ortho32-provider-keys, key: anthropic, optional: true}}
+          volumeMounts:
+            - {name: ipc, mountPath: /tmp}
+            - {name: gateway-data, mountPath: /var/lib/ortho32-ai}   # request/event log; lost on pod restart
+          readinessProbe:
+            exec: {command: [test, -S, /tmp/CoreFxPipe_ortho-ai]}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: "1", memory: 512Mi}
+        - name: api
+          image: REGISTRY/ortho32-api:TAG
+          securityContext: *locked
+          ports:
+            - {name: http, containerPort: 7032}
+          env:
+            - name: SECRET_KEY            # the app's built-in default is a public dev secret: always set this
+              valueFrom: {secretKeyRef: {name: ortho32-api, key: secret-key}}
+          volumeMounts:
+            - {name: ipc, mountPath: /tmp}
+          readinessProbe:
+            tcpSocket: {port: http}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: "1", memory: 256Mi}
       volumes:
         - name: ipc
           emptyDir: {}
+        - name: gateway-data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ortho32-api
+  namespace: ortho32
+spec:
+  selector: {app: ortho32-core}
+  ports:
+    - {name: http, port: 7032, targetPort: http}
+---
+# Only pods in this namespace may reach the API; add an Ingress + policy to expose it further.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-from-namespace
+  namespace: ortho32
+spec:
+  podSelector: {matchLabels: {app: ortho32-core}}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {}
+      ports:
+        - {port: 7032, protocol: TCP}

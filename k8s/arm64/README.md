@@ -1,57 +1,59 @@
 # ORTHO32 on an ARM64 Kubernetes cluster (k3s)
 
-Status: **foundation only, not end-to-end.** Nothing here has been built or run on hardware.
-What was checked: shell syntax, YAML parsing, and `ortho32-mcp`'s own test suite on `mawk`.
-Not checked: any image build (`host.Dockerfile` needs the .NET SDK, which was unavailable), any `kubectl apply`.
+Status: **manifests and images written; not yet built or run on a cluster.** The service-level fixes this
+depends on were tested separately (see below), but the full chain host ⇄ gateway ⇄ API has never run together,
+and no image has been built (no Docker daemon or .NET SDK was available).
 
 ## Decisions
 
 | Choice | Why |
 | --- | --- |
 | k3s, version pinned by you | Small, ARM64-native, one binary per node. |
-| No Python, no PyTorch/JAX, no Ray | None of the ORTHO32 service repos needs them. |
-| No GPU runtime on the Orin nodes | Nothing in the repos uses the Orin GPU, so the NVIDIA runtime and device plugin would be unused moving parts. Add them when a workload needs them. |
+| No PyTorch/JAX/Ray, no GPU runtime on the Orin nodes | No service repo uses them. The API is Python (FastAPI) but needs no ML packages. |
 | Custom CUDA stays on the RTX 3080 | It targets `sm_86` and (for `hyperkitty-loader`) the `nouveau` driver, which conflicts with the standard cluster GPU stack. Reach it as an external service: `manifests/40-external-cuda.yaml.example`. |
-| One pod, shared `/tmp` | `ortho-host` / `ortho-ai` are local named pipes (Unix sockets on Linux). Peers must share the pod. |
+| One pod: host + gateway + API, shared `/tmp` | Their IPC is local Unix sockets (.NET named pipes on Linux). |
 
 ## Layout
 
 - `bootstrap/` — node prep, k3s server, k3s agent.
-- `images/` — `host.Dockerfile` (.NET 8, linux/arm64), `mcp.Dockerfile` (AWK, stdio).
-- `manifests/` — namespace + default-deny ingress, the `ortho32-core` pod, external-CUDA template.
+- `images/` — `host.Dockerfile` (.NET 8), `gateway.Dockerfile` (M on YottaDB + socat/jq/curl), `api.Dockerfile` (FastAPI), `mcp.Dockerfile` (AWK, stdio).
+- `manifests/` — namespace + default-deny ingress, the `ortho32-core` pod, `Service`, external-CUDA template.
 
 ## Runbook
 
 ```sh
 # every node
 ./bootstrap/00-node-prep.sh
-# control plane
-K3S_VERSION=<pinned> ./bootstrap/10-k3s-server.sh
-# each worker
-K3S_VERSION=<pinned> K3S_URL=https://<server>:6443 K3S_TOKEN=<token> ./bootstrap/20-k3s-agent.sh
+K3S_VERSION=<pinned> ./bootstrap/10-k3s-server.sh                                   # control plane
+K3S_VERSION=<pinned> K3S_URL=https://<server>:6443 K3S_TOKEN=<token> ./bootstrap/20-k3s-agent.sh   # workers
 
-# images (replace <registry>/<tag>)
-docker buildx build --platform linux/arm64 -f images/host.Dockerfile -t <registry>/ortho32-host:<tag> --push <path-to-ortho32-host>
-docker buildx build --platform linux/arm64 -f images/mcp.Dockerfile  -t <registry>/ortho32-mcp:<tag>  --push <path-to-ortho32-mcp>
+# images (build from each repo's root; replace <registry>/<tag>)
+docker buildx build --platform linux/arm64 -f images/host.Dockerfile    -t <registry>/ortho32-host:<tag>        --push <ortho32-host>
+docker buildx build --platform linux/arm64 -f images/gateway.Dockerfile -t <registry>/ortho32-ai-gateway:<tag>  --push <ortho32-ai-gateway>
+docker buildx build --platform linux/arm64 -f images/api.Dockerfile     -t <registry>/ortho32-api:<tag>         --push <ortho32-api>
 
-# edit REGISTRY/TAG in manifests/10-core.yaml, then
-kubectl apply -f manifests/00-namespace.yaml -f manifests/10-core.yaml
+# secrets (see the header of manifests/10-core.yaml), then edit REGISTRY/TAG and apply
+kubectl apply -f manifests/00-namespace.yaml
+kubectl -n ortho32 create secret generic ortho32-api --from-literal=secret-key="$(openssl rand -hex 32)"
+kubectl -n ortho32 create secret generic ortho32-provider-keys --from-literal=openai=... --from-literal=anthropic=...
+kubectl apply -f manifests/10-core.yaml
 ```
 
-## Integration gaps (why this is not end-to-end)
+## Fixes this relies on (separate PRs, merge first)
 
-Found by reading the code; each blocks a working Linux deployment regardless of Kubernetes.
+The repos could not run together on Linux. Each item was found by reading the code and, where noted, confirmed by running it.
 
-1. **API cannot reach the host on Linux.** `ortho32-api/app/ipc.py` uses a Windows pipe via `pywin32`, else falls back to TCP `127.0.0.1:7032`. `ortho32-host` has no TCP listener (only `NamedPipeServerStream("ortho-host")`), and 7032 is also the API's own port.
-2. **Gateway has no server.** `ortho32-ai-gateway/m/*.m` are routines (`REQ^ORTHOAI`, ...) that write events to stdout (`ORTIPC.m`). Nothing listens on the `ortho-ai` pipe that `ortho32-host/Services/InferenceService.cs` connects to.
-3. **Stale connection matrix.** `ortho32-host/RUNTIME_CONNECTION_MATRIX.json` points at `ortho32-ai-gateway/src/ipc/*.ts`, which no longer exists.
-4. **Provider keys on the command line.** `ORTPROV.m` builds a `curl ... -H "Authorization: Bearer <key>"` string, so the key is visible in the process list inside the container.
-5. **MCP is stdio-only.** `ortho32-mcp` is not a network service; run it with `kubectl run -i` / `exec -i`, or put an adapter in front.
+| Problem | Fix | Tested |
+| --- | --- | --- |
+| API connected to its own port 7032; wire schema differs from the host's (every request would be a ProtocolError); `pip install` failed | `ortho32-api#1` | 11 tests incl. a fake host over Unix socket and TCP |
+| Gateway crashed on its first call (`DO` vs `$$`), never ran `curl` (`$ZF(-1)` is a no-op), had shell injection and key-on-argv, invalid JSON escaping, wrong event shape, and no server | `ortho32-ai-gateway#1` | 15 end-to-end checks vs a mock provider, on YottaDB r2.06 (x86_64) |
+| Connection matrix pointed at deleted TypeScript files | `ortho32-host#1` | JSON validity only |
 
-None of these is changed here; they live in other repos.
+## Still unverified
 
-## Unverified assumptions
-
-- .NET maps named pipes to Unix sockets under `/tmp` (`CoreFxPipe_<name>`), so a shared `/tmp` emptyDir is enough.
-- `ortho32-host` builds and starts on Linux (`AddWindowsService` is expected to be a no-op there).
-- Pod Security `restricted` is compatible with the host process as written.
+- `ortho32-host` has not been built or run on Linux (no .NET SDK here). Assumed: it builds, `AddWindowsService` is a no-op, and named pipes appear as `/tmp/CoreFxPipe_<name>`.
+- The API's `type` values are assumed to match the host router's `Action` names.
+- The gateway has only been run against a mock provider, on x86_64, as root. The arm64 image, running YottaDB as uid 10001, and real OpenAI/Anthropic calls are untested.
+- The gateway keeps its request/event log in an `emptyDir`; it is lost when the pod restarts.
+- `ortho32-mcp` is stdio-only; run it with `kubectl run -i` / `exec -i`, or put an adapter in front. `ortho32-bridge` (referenced by the connection matrix) was not available to check.
+- The API's built-in JWT secret is a public dev value; the manifest forces `SECRET_KEY` from a Secret.
