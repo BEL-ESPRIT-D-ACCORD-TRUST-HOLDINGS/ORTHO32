@@ -1,0 +1,46 @@
+# Proves: arm64 scheduling, nvidia runtime, device plugin, PyTorch CUDA, JAX CUDA.
+# Build/push the images first (see ../docker). Replace REGISTRY.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ortho32-ml
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: gpu-smoke
+  namespace: ortho32-ml
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      restartPolicy: Never
+      runtimeClassName: nvidia
+      nodeSelector:
+        kubernetes.io/arch: arm64
+        ortho32.io/accelerator: jetson-orin
+      containers:
+        - name: torch
+          image: REGISTRY/ortho32-jetson-torch:dev
+          command: ["python3", "-c"]
+          args:
+            - |
+              import torch
+              assert torch.cuda.is_available(), "CUDA not visible to PyTorch"
+              print(torch.__version__, torch.cuda.get_device_name(0))
+              a = torch.randn(1024, 1024, device="cuda"); print((a @ a).sum().item())
+          resources:
+            limits: {nvidia.com/gpu: 1}
+        - name: jax
+          image: REGISTRY/ortho32-jetson-jax:dev
+          command: ["python3", "-c"]
+          args:
+            - |
+              import jax, jax.numpy as jnp
+              devs = jax.devices(); print(devs)
+              assert devs[0].platform == "gpu", "JAX fell back to CPU"
+              x = jnp.ones((1024, 1024)); print((x @ x).sum())
+          resources:
+            limits: {nvidia.com/gpu: 1}   # needs replicas>=2 time-slicing, or split into two Jobs

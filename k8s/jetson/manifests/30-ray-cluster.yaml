@@ -1,0 +1,41 @@
+# Scale-out layer. Requires KubeRay operator:
+#   helm repo add kuberay https://ray-project.github.io/kuberay-helm/
+#   helm upgrade -i kuberay-operator kuberay/kuberay-operator -n ortho32-ml
+# Ray version in the image MUST match across head/workers. Pin it in the Dockerfile.
+apiVersion: ray.io/v1
+kind: RayCluster
+metadata:
+  name: ortho32-ray
+  namespace: ortho32-ml
+spec:
+  rayVersion: "2.40.0"   # set to the version baked into the image
+  headGroupSpec:
+    rayStartParams: {num-gpus: "0"}
+    template:
+      spec:
+        nodeSelector: {kubernetes.io/arch: arm64}
+        containers:
+          - name: ray-head
+            image: REGISTRY/ortho32-jetson-torch:dev
+            resources:
+              requests: {cpu: "1", memory: 2Gi}
+              limits: {cpu: "2", memory: 4Gi}
+  workerGroupSpecs:
+    - groupName: orin
+      replicas: 2
+      minReplicas: 1
+      maxReplicas: 8
+      rayStartParams: {num-gpus: "1"}
+      template:
+        spec:
+          runtimeClassName: nvidia
+          nodeSelector:
+            kubernetes.io/arch: arm64
+            ortho32.io/accelerator: jetson-orin
+          containers:
+            - name: ray-worker
+              image: REGISTRY/ortho32-jetson-torch:dev
+              resources:
+                # Orin Nano: 6 cores / 4-8 GB shared CPU+GPU RAM. Leave headroom for kubelet + OS.
+                requests: {cpu: "3", memory: 3Gi}
+                limits: {cpu: "5", memory: 5Gi, nvidia.com/gpu: 1}

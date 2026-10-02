@@ -1,0 +1,21 @@
+# helm repo add nvdp https://nvidia.github.io/k8s-device-plugin
+# helm upgrade -i nvdp nvdp/nvidia-device-plugin -n kube-system --version <PIN_A_CURRENT_RELEASE> \
+#   -f 10-nvidia-device-plugin-values.yaml
+#
+# Orin is an integrated (Tegra) GPU; the plugin supports it in recent releases -- confirm in the
+# release notes for the version you pin. Orin has ONE GPU per node, so use time-slicing if you
+# want >1 pod per node.
+runtimeClassName: nvidia
+nodeSelector:
+  ortho32.io/accelerator: jetson-orin
+config:
+  map:
+    default: |-
+      version: v1
+      flags:
+        migStrategy: none
+      sharing:
+        timeSlicing:
+          resources:
+            - name: nvidia.com/gpu
+              replicas: 1      # raise to oversubscribe a node (no memory isolation!)
